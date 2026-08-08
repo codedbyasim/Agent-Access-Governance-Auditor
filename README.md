@@ -5,116 +5,203 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-green)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-blue)](https://react.dev/)
 [![DataHub MCP](https://img.shields.io/badge/DataHub_MCP-v0.6.0-orange)](https://pypi.org/project/mcp-server-datahub/)
-[![Tests](https://img.shields.io/badge/Tests-41%20Passed-brightgreen)](#-running-automated-tests)
+[![Tests](https://img.shields.io/badge/Tests-43%20Passed-brightgreen)](#-running-automated-tests)
 
-A full-stack AI safety and compliance governance platform that monitors AI agents' access to DataHub-cataloged data assets via **DataHub MCP Server**, evaluates access events against policy rules, writes compliance flags/notes back to DataHub, and notifies data owners via automated GitHub Issues.
+A full-stack AI safety and data compliance governance platform built for **Build with DataHub — The Agent Hackathon**.
 
-Created for **Build with DataHub — The Agent Hackathon** (Challenge Category: **Agents That Do Real Work**).
+The platform monitors AI agents' access to DataHub-cataloged data assets via **DataHub Model Context Protocol (MCP) Server (`mcp-server-datahub`)**, evaluates access attempts against enterprise data governance policies, writes risk flags and audit notes directly onto the DataHub metadata graph, and notifies dataset owners via automated GitHub Issues.
 
----
-
-## 🎯 Challenge Category
-
-**Agents That Do Real Work**
-> *"Your agent reads DataHub through the MCP Server or Agent Context Kit to understand what's connected to what, takes action, and writes results back so the next person or agent inherits the knowledge."*
-
-This system genuinely integrates **DataHub's Model Context Protocol (MCP) Server (`mcp-server-datahub`)**:
-1. **Context-Read Path**: Interrogates dataset sensitivity (`pii`, `confidential`, `public`), ownership, and metadata using MCP Server `search` and `get_entities` tools under an active `MCPContext`.
-2. **Write-Back Path**: Emits `urn:li:tag:governance-risk` violation flags and structured audit notes back onto DataHub dataset entities using the MCP Server `add_tags` tool, and clears tags post-remediation using `remove_tags`.
+Submitted for Challenge Track: **Agents That Do Real Work**
 
 ---
 
-## ✨ Features Implemented (SRS §3)
+## 📽️ Demo Video & Media
 
-- **Feature 1: User Authentication & GitHub OAuth (§3.1, §3.5)**
-  - User Signup and Login with PBKDF2/SHA256 password hashing and JWT Bearer token sessions.
-  - GitHub OAuth 2.0 Authorization Code flow linking user accounts for automated GitHub Issue creation.
-
-- **Feature 2: DataHub Dataset Catalog Integration via MCP Server (§3.1)**
-  - Dynamic metadata ingestion from DataHub GMS (`http://localhost:8080`) using MCP Server `search` and `get_entities` tools.
-  - Search, classification filtering (`pii`, `confidential`, `public`), and live classification tag editing (write-back to DataHub).
-
-- **Feature 3: AI Agent Policy Registry (§3.2)**
-  - Registered AI agent management (`CustomerSupportBot`, `FinancialAnalystAgent`, `DataGovernanceCheckerAgent`, etc.).
-  - Agent policy configuration: declared purpose, allowed dataset classifications, and human approval enforcement.
-
-- **Feature 4: Access Event Auditing Engine (§3.3)**
-  - Real-time access policy evaluation engine (`evaluate_and_record_access_event`).
-  - Interrogates target dataset sensitivity via DataHub MCP Server to classify access events as `OK` (Compliant) or `FLAGGED` (Policy Violation).
-  - Pre-configured 5-scenario test suite simulator (`POST /api/audit/simulate-batch`).
-
-- **Feature 5: DataHub MCP Write-Back & Remediation Engine (§3.4)**
-  - Automatic `governance-risk` tag emission via MCP `add_tags` tool and structured audit note aspect write-back to DataHub entities upon policy violations.
-  - Remediation endpoint (`POST /api/datasets/{identifier}/remediate`) executing MCP `remove_tags` tool to clear risk tags upon violation resolution.
-
-- **Feature 6: Automated GitHub Issue Notification Engine (§3.5)**
-  - Automated GitHub Issue creation on dataset owner repositories via GitHub REST API using OAuth tokens.
-  - Structured Markdown issue formatting with violation reason, audit URN, and remediation checklist.
-  - Graceful local fallback logging (`⚡ Simulated Alert Logged`) when GitHub OAuth is disconnected.
-
-- **Feature 7: Audit Log & Reporting Engine (§3.6)**
-  - Persistent immutable audit log store with multi-criteria search, status filtering, agent filtering, and pagination.
-  - One-click **Export CSV** and **Export JSON** report downloads.
-  - Real-time KPI summary metrics cards (Total Evaluations, Compliance Rate %, Flagged Violations, Top Violating Agent).
-  - Deep audit record inspector modal (`AuditLogDetailModal`).
+- **Official Demo Video (2:45 min MP4)**: [`examples/demo_video.mp4`](examples/demo_video.mp4) or [`examples/agent_access_governance_auditor_demo.mp4`](examples/agent_access_governance_auditor_demo.mp4)
+- **GitHub Repository**: [https://github.com/codedbyasim/Agent-Access-Governance-Auditor](https://github.com/codedbyasim/Agent-Access-Governance-Auditor)
 
 ---
 
-## 🚀 One-Command Quickstart
+## 🎯 Problem Statement
+
+As enterprises rapidly deploy autonomous AI agents (Customer Support Bots, Financial Analytics Assistants, RAG Search Agents) to query corporate data platforms (Snowflake, BigQuery, Postgres), a critical **AI Safety & Compliance Gap** emerges:
+
+1. **Invisible Access**: AI agents frequently query datasets containing PII (SSNs, credit card numbers, addresses) or confidential financial tables without explicit approval or policy checks.
+2. **Catalog Blind Spots**: Data governance teams have no visibility in DataHub whether an asset was accessed by a human or an unauthorized AI agent.
+3. **Delayed Incident Remediation**: When policy breaches occur, compliance teams lack real-time write-backs to flag high-risk assets in the data catalog or automatically trigger incident tickets.
+
+---
+
+## 💡 Solution Overview
+
+The **Agent Access Governance Auditor** acts as a real-time governance sidecar that continuously monitors, audits, and enforces access control rules between AI agents and cataloged data assets:
+
+```
+ ┌───────────────────────────────────────────────────────────┐
+ │                   Frontend (React 18 + TS)                │
+ │   Dashboard · Datasets · Agents · AuditRunner · AuditLog  │
+ └─────────────────────────────┬─────────────────────────────┘
+                               │ REST / JSON (JWT Bearer Auth)
+ ┌─────────────────────────────▼─────────────────────────────┐
+ │                    Backend API (FastAPI)                   │
+ │   routers: auth, datasets, agents, audit, health          │
+ └──────────────┬──────────────────────────────┬─────────────┘
+                │                              │
+ ┌──────────────▼──────────────┐ ┌──────────────▼─────────────┐
+ │       Core Audit Engine     │ │      Database Store        │
+ │ (auditor.py, policy.py)     │ │   (SQLite via SQLAlchemy)  │
+ └──────────────┬──────────────┘ └────────────────────────────┘
+                │
+ ┌──────────────▼──────────────┐
+ │    Integrations Layer       │
+ └──────┬──────────────┬───────┘
+        │              │
+ DataHub MCP Server  GitHub REST API
+ (mcp-server-datahub) (OAuth Issues)
+        │              │
+ ┌──────▼──────┐ ┌─────▼──────┐
+ │   DataHub   │ │   GitHub   │
+ │   (GMS)     │ │ (Issues)   │
+ └─────────────┘ └────────────┘
+```
+
+---
+
+## ⚡ Real DataHub Integration (MCP Server)
+
+This system genuinely uses the **DataHub Model Context Protocol (MCP) Server (`mcp-server-datahub` v0.6.0)** under an active `MCPContext`:
+
+### 1. Live Context-Read Path
+- **`search` Tool**: Queries live cataloged datasets from DataHub GMS (`http://localhost:8080`) using `mcp_server_datahub.tools.search.search`.
+- **`get_entities` Tool**: Fetches live tags, sensitivity levels (`pii`, `confidential`, `public`), and asset descriptions via `mcp_server_datahub.tools.entities.get_entities`.
+
+### 2. Live Graph Write-Back Path
+- **`add_tags` Tool**: Emits `urn:li:tag:governance-risk` violation tags and structured audit notes onto DataHub dataset entities using `mcp_server_datahub.tools.tags.add_tags` whenever an AI agent attempts unauthorized access.
+- **`remove_tags` Tool**: Clears `governance-risk` tags upon remediation via `mcp_server_datahub.tools.tags.remove_tags`.
+
+### 3. Fast-Failure & Resiliency Controls
+- Explicit 3-second connection/read timeout configuration (`timeout_sec=3.0`, `connect_timeout_sec=3.0`, `read_timeout_sec=3.0`, `retry_max_times=0`).
+- Built-in **Circuit Breaker**: When DataHub GMS is offline, calls fail fast in **< 0.001 seconds** with graceful catalog cache fallbacks.
+
+---
+
+## ✨ System Features (SRS §3)
+
+1. **User Authentication & GitHub OAuth (§3.1, §3.5)**
+   - User Signup and Login with PBKDF2/SHA256 password hashing and JWT Bearer sessions.
+   - GitHub OAuth 2.0 Authorization Code flow linking compliance officer accounts.
+
+2. **DataHub Datasets Catalog Explorer (§3.1)**
+   - Search, classification filtering (`pii`, `confidential`, `public`), URN inspection, and live classification tag editing.
+
+3. **AI Agent Policy Registry (§3.2)**
+   - Agent policy configuration: declared purpose, allowed classifications, and human approval toggles.
+
+4. **Real-time Access Auditing Engine (§3.3)**
+   - Policy evaluation engine comparing agent permissions against dataset classifications.
+   - 5-scenario compliance simulator (`POST /api/audit/simulate-batch`).
+
+5. **DataHub Graph Write-Back & Remediation (§3.4)**
+   - Automatic `governance-risk` tagging and audit note writing to DataHub.
+   - Officer remediation workflow clearing risk tags via `/api/datasets/{identifier}/remediate`.
+
+6. **Automated GitHub Issue Incident Dispatch (§3.5)**
+   - Automated GitHub Issue creation on dataset owner repositories with violation details and URN links.
+   - Local simulated notification fallback logging (`⚡ Simulated Alert Logged`) when OAuth is disconnected.
+
+7. **Audit Log & Reporting (§3.6)**
+   - Immutable audit trail with multi-criteria filtering, search, and pagination.
+   - One-click **Export CSV** and **Export JSON** compliance report downloads.
+
+---
+
+## 🚀 Setup & Quickstart Guide
 
 ### Prerequisites
 - Docker & Docker Compose installed
-- Python 3.11 / 3.12 with virtual environment (`venv`)
-- Node.js `v22+` and npm `10+`
+- Python 3.11 or 3.12 with virtual environment (`venv`)
+- Node.js `v20+` and npm `10+`
 - DataHub Quickstart running locally in Docker (`http://localhost:8080` GMS, `http://localhost:9002` Frontend)
-
-### Option A: One-Command Docker Compose Startup (Recommended for Judges)
-```bash
-docker-compose up --build
-```
-- Backend API: [http://localhost:8000](http://localhost:8000)
-- Frontend Web App: [http://localhost:3000](http://localhost:3000)
-
-### Option B: Local Development Startup
-```bash
-# 1. Start Backend API
-.\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-
-# 2. Start Frontend Web App (in separate terminal)
-cd frontend
-npx vite --port 3000
-```
-Interactive API Swagger Documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
 ---
 
-## 🔑 Authentication & GitHub OAuth Setup
+### Option A: One-Command Docker Compose (Recommended)
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/codedbyasim/Agent-Access-Governance-Auditor.git
+   cd Agent-Access-Governance-Auditor
+   ```
+
+2. **Start all services**:
+   ```bash
+   docker-compose up --build
+   ```
+
+3. **Access the application**:
+   - Frontend Portal: [http://localhost:3000](http://localhost:3000)
+   - Backend API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+   - Health Status Endpoint: [http://localhost:8000/health](http://localhost:8000/health)
+
+---
+
+### Option B: Manual Local Setup
+
+#### 1. Backend API Setup
+```bash
+# Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\activate  # On Windows
+# source venv/bin/activate  # On Linux/macOS
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Start FastAPI backend
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+#### 2. Frontend Setup (in separate terminal)
+```bash
+cd frontend
+npm install
+npm run dev -- --port 3000
+```
+
+---
+
+## 🔑 GitHub OAuth Setup (Optional for Live Issue Creation)
 
 1. Go to **GitHub Developer Settings**: [https://github.com/settings/developers](https://github.com/settings/developers)
-2. Register a new OAuth Application:
+2. Create a new OAuth Application:
    - **Application Name**: `Agent Access Governance Auditor`
    - **Homepage URL**: `http://localhost:3000`
-   - **Authorization callback URL**: `http://localhost:3000/auth/github/callback`
-3. Copy **Client ID** and generate **Client Secret**.
-4. Configure your `.env` file in the root directory:
+   - **Authorization Callback URL**: `http://localhost:3000/auth/github/callback`
+3. Configure your root `.env` file:
    ```env
-   GITHUB_CLIENT_ID=your_client_id_here
-   GITHUB_CLIENT_SECRET=your_client_secret_here
+   GITHUB_CLIENT_ID=your_client_id
+   GITHUB_CLIENT_SECRET=your_client_secret
    GITHUB_REDIRECT_URI=http://localhost:3000/auth/github/callback
    ```
-5. Navigate to **Settings & OAuth** in the portal to connect your account.
+4. Connect your account on the **Settings & OAuth** page in the portal.
 
 ---
 
 ## 🧪 Running Automated Tests
 
-Run the complete backend test suite (41 unit & integration tests covering MCP Server integration, policy engine, auth, and write-backs):
+Run the complete backend test suite (**43 unit & integration tests** covering MCP Server integration, policy engine, auth, timeouts, and write-backs):
 
 ```bash
-.\venv\Scripts\pytest.exe backend/tests
+.\venv\Scripts\pytest.exe backend/tests -q
 ```
 
-Frontend production bundle build validation:
+Output:
+```text
+...........................................                              [100%]
+43 passed in 21.01s
+```
+
+Frontend production build check:
 ```bash
 cd frontend
 npm run build
@@ -122,32 +209,30 @@ npm run build
 
 ---
 
-## 📊 Sample Artifacts & Examples
+## 📊 Sample Output Artifacts
 
-Sample exported artifacts are available in the [`examples/`](examples/) folder:
+Sample artifacts are available in the [`examples/`](examples/) folder:
+- [`examples/demo_video.mp4`](examples/demo_video.mp4) — 2:45 Live MP4 Demo Video
 - [`examples/audit_log_sample.json`](examples/audit_log_sample.json) — Exported JSON audit report
 - [`examples/audit_log_sample.csv`](examples/audit_log_sample.csv) — Exported CSV compliance report
-- [`examples/datahub_writeback_sample.json`](examples/datahub_writeback_sample.json) — Sample DataHub MCP Server write-back payload
+- [`examples/datahub_writeback_sample.json`](examples/datahub_writeback_sample.json) — DataHub MCP Server write-back payload
 
 ---
 
-## 📢 Disclosure of Pre-Existing Work & AI Assistance (NFR-15, Hackathon Rules §2)
+## 📢 Hackathon Compliance & Pre-Existing Work Disclosure
 
-Per official Devpost hackathon guidelines:
-- **Frameworks & Libraries**: FastAPI, React 18, Vite, SQLAlchemy, PyJWT, and `mcp-server-datahub` (Model Context Protocol package).
-- **Live DataHub Integration**: Dataset metadata reads (`search`, `get_entities`), classification sensitivity levels (`pii`, `confidential`, `public`), and write-backs (`add_tags`, `remove_tags`, notes) are executed live against DataHub GMS (`http://localhost:8080`).
-- **Simulated Data**: AI agent access events are simulated via the Audit Runner scenario simulator per SRS §2.6.
-- **AI Coding Assistance**: Developed with AI pair-programming assistance (Google DeepMind Antigravity AI coding assistant) during the official submission period (July 6 – August 10, 2026).
+Per official Devpost hackathon rules (§2):
+- **Frameworks & Packages**: FastAPI, React 18, Vite, SQLAlchemy, PyJWT, and `mcp-server-datahub` (Model Context Protocol package).
+- **DataHub Integration**: Genuine live metadata reads (`search`, `get_entities`), classifications (`pii`, `confidential`, `public`), and write-backs (`add_tags`, `remove_tags`, notes) executed via DataHub MCP Server against DataHub GMS (`http://localhost:8080`).
+- **Simulated Data**: AI agent access attempts are generated via the scenario audit simulator per SRS §2.6.
+- **AI Coding Assistance**: Developed with AI pair-programming assistance (Google DeepMind Antigravity AI coding assistant) during the official hackathon window.
 
 ---
 
-## 🏛️ Architecture & Documentation
+## 🏛️ Project Documentation Links
 
+- [Software Requirements Specification (SRS)](SRS.md)
 - [Architecture & Data Flow Specification](docs/architecture.md)
 - [Architectural & Engineering Decisions Log](docs/decisions.md)
 - [Design System & UI Guidelines](docs/design-system.md)
-
----
-
-## 📄 License
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+- [Compliance Verification & Definition of Done](Agent.md)
