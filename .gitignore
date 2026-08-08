@@ -22,6 +22,11 @@ frontend/build/
 .env
 *.sqlite
 *.sqlite3
+*.db
+auditor.db
+
+# Temp / Scratch
+scratch/
 
 # IDE & OS
 .vscode/
