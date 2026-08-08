@@ -101,10 +101,19 @@ class DataHubClient:
         self.gms_url = gms_url or settings.DATAHUB_GMS_URL
         self.timeout_sec = timeout_sec
         self.token = token or settings.DATAHUB_TOKEN or self._auto_acquire_token()
-        self.emitter = DatahubRestEmitter(gms_server=self.gms_url, token=self.token, timeout_sec=int(self.timeout_sec))
+        self.emitter = DatahubRestEmitter(
+            gms_server=self.gms_url,
+            token=self.token,
+            timeout_sec=self.timeout_sec,
+            connect_timeout_sec=self.timeout_sec,
+            read_timeout_sec=self.timeout_sec,
+            retry_max_times=0
+        )
         self._datasets_cache: Dict[str, Dict[str, Any]] = {
             d["name"].lower(): dict(d) for d in DEFAULT_DATASETS
         }
+        self._gms_offline: bool = False
+        self._last_health_check: float = 0.0
 
     def _auto_acquire_token(self) -> Optional[str]:
         """
@@ -141,19 +150,26 @@ class DataHubClient:
         """
         Verify connectivity to DataHub GMS instance and MCP Server tool interface with fast timeout (FR-36, NFR-12).
         """
+        self._last_health_check = time.time()
         try:
             url = f"{self.gms_url.rstrip('/')}/health"
             headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
             response = requests.get(url, headers=headers, timeout=self.timeout_sec)
-            return response.status_code == 200
+            is_ok = (response.status_code == 200)
+            self._gms_offline = not is_ok
+            return is_ok
         except Exception as e:
+            self._gms_offline = True
             logger.error(f"DataHub connection test failed fast ({e}): unreachable GMS endpoint")
             return False
 
     def call_mcp_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
-        Executes a DataHub MCP Server Tool under an active MCPContext with fast timeout protection.
+        Executes a DataHub MCP Server Tool under an active MCPContext with fast timeout protection & circuit breaker.
         """
+        if self._gms_offline and (time.time() - self._last_health_check < 30.0):
+            raise RuntimeError("DataHub GMS is offline (circuit breaker active)")
+
         ctx = self._get_mcp_context()
         token = _mcp_context.set(ctx)
         try:
@@ -167,6 +183,10 @@ class DataHubClient:
                 return mcp_remove_tags_tool(**tool_args)
             else:
                 raise ValueError(f"Unknown MCP tool '{tool_name}'")
+        except Exception as e:
+            self._gms_offline = True
+            self._last_health_check = time.time()
+            raise e
         finally:
             _mcp_context.reset(token)
 
@@ -344,17 +364,20 @@ class DataHubClient:
 
             # Execute write-back through DataHub MCP Server add_tags tool
             try:
-                # Ensure tag entity exists in DataHub GMS first
-                try:
-                    from datahub.metadata.schema_classes import TagPropertiesClass
-                    from datahub.emitter.mcp import MetadataChangeProposalWrapper
-                    mcp_tag = MetadataChangeProposalWrapper(
-                        entityUrn="urn:li:tag:governance-risk",
-                        aspect=TagPropertiesClass(name="governance-risk", description="Governance Policy Violation Detected by Auditor")
-                    )
-                    self.emitter.emit(mcp_tag)
-                except Exception as emit_err:
-                    logger.debug(f"Tag emission pre-check info: {emit_err}")
+                # Ensure tag entity exists in DataHub GMS first if GMS is online
+                if not self._gms_offline:
+                    try:
+                        from datahub.metadata.schema_classes import TagPropertiesClass
+                        from datahub.emitter.mcp import MetadataChangeProposalWrapper
+                        mcp_tag = MetadataChangeProposalWrapper(
+                            entityUrn="urn:li:tag:governance-risk",
+                            aspect=TagPropertiesClass(name="governance-risk", description="Governance Policy Violation Detected by Auditor")
+                        )
+                        self.emitter.emit(mcp_tag)
+                    except Exception as emit_err:
+                        self._gms_offline = True
+                        self._last_health_check = time.time()
+                        logger.debug(f"Tag emission pre-check info: {emit_err}")
 
                 mcp_res = self.call_mcp_tool("add_tags", {
                     "tag_urns": ["urn:li:tag:governance-risk"],

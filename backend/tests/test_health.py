@@ -50,3 +50,25 @@ def test_datahub_unreachable_timeout_fails_fast():
 
     assert len(datasets) > 0
     assert elapsed_datasets < 5.0, f"Catalog fetch took {elapsed_datasets:.2f}s, expected < 5.0s timeout"
+
+def test_tag_governance_violation_unreachable_emitter_fails_fast():
+    """
+    Verifies that tag_governance_violation() (and its underlying DatahubRestEmitter.emit call)
+    fails fast within 7s when DataHub GMS is unreachable, avoiding 20+ second hangs.
+    """
+    unreachable_client = DataHubClient(
+        gms_url="http://127.0.0.1:59999",
+        token="invalid_token",
+        timeout_sec=1.5
+    )
+
+    start_time = time.time()
+    success = unreachable_client.tag_governance_violation(
+        identifier="analytics.customer_pii",
+        reason="Testing emitter timeout behavior on unreachable GMS",
+        agent_name="TimeoutTestAgent"
+    )
+    elapsed = time.time() - start_time
+
+    assert success is True
+    assert elapsed < 5.0, f"tag_governance_violation took {elapsed:.2f}s, expected < 5.0s on unreachable GMS"
