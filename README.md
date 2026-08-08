@@ -209,15 +209,34 @@ npm run build
 
 ---
 
-## 📊 Sample Output Artifacts
+## 📁 Generated Sample Artifacts (For Hackathon Judges)
 
-Sample artifacts are available in the [`examples/`](examples/) folder:
-- [`examples/demo_video.mp4`](examples/demo_video.mp4) — 2:45 Live MP4 Demo Video
-- [`examples/audit_log_sample.json`](examples/audit_log_sample.json) — Exported JSON audit report
-- [`examples/audit_log_sample.csv`](examples/audit_log_sample.csv) — Exported CSV compliance report
-- [`examples/datahub_writeback_sample.json`](examples/datahub_writeback_sample.json) — DataHub MCP Server write-back payload
+The system automatically generates compliance audit reports, DataHub metadata graph write-back payloads, and incident tickets. Judges can evaluate the output quality directly via the following repository links without running the code:
 
----
+### 1. DataHub MCP Server Write-Back Payload
+- **File**: [`examples/datahub_writeback_sample.json`](examples/datahub_writeback_sample.json)
+- **Description**: Contains the exact JSON MetadataChangeProposal (MCP) structure emitted to DataHub GMS via `mcp-server-datahub` (`add_tags` tool) when a policy violation occurs:
+  ```json
+  {
+    "entity_urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,analytics.customer_pii,PROD)",
+    "emitted_tag_urn": "urn:li:tag:governance-risk",
+    "mcp_tool_used": "add_tags",
+    "writeback_status": "SUCCESS",
+    "audit_note": "[2026-08-08 16:35 UTC] Governance Policy Violation by agent 'CustomerSupportBot': Attempted unauthorized access to PII dataset without required approval."
+  }
+  ```
+
+### 2. Exported Compliance Audit Report (JSON)
+- **File**: [`examples/audit_log_sample.json`](examples/audit_log_sample.json)
+- **Description**: Machine-readable JSON export containing complete audit trail metadata, agent policy checks, dataset URNs, and violation reasons.
+
+### 3. Exported Compliance Audit Report (CSV)
+- **File**: [`examples/audit_log_sample.csv`](examples/audit_log_sample.csv)
+- **Description**: Human-readable CSV export formatted for enterprise data governance and regulatory compliance reporting.
+
+### 4. End-to-End Live MP4 Demo Video
+- **File**: [`examples/demo_video.mp4`](examples/demo_video.mp4) (or [`examples/agent_access_governance_auditor_demo.mp4`](examples/agent_access_governance_auditor_demo.mp4))
+- **Description**: 2 minutes 45 seconds live continuous screen recording of the platform running end-to-end, demonstrating live context-reads, policy checks, DataHub graph write-backs, and GitHub issue creation.
 
 ## 📢 Hackathon Compliance & Pre-Existing Work Disclosure
 
