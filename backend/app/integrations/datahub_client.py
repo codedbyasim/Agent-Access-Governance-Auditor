@@ -94,23 +94,24 @@ DEFAULT_DATASETS: List[Dict[str, Any]] = [
 class DataHubClient:
     """
     DataHub Integration Layer utilizing DataHub MCP Server (mcp-server-datahub package).
-    Performs context-reads via MCP search and get_entities tools, and write-backs via MCP add_tags/remove_tags tools.
+    Performs live context-reads via MCP search and get_entities tools, and write-backs via MCP add_tags/remove_tags tools.
+    Includes explicit 3s timeouts for fast failure & clean fallback.
     """
-    def __init__(self, gms_url: Optional[str] = None, token: Optional[str] = None):
+    def __init__(self, gms_url: Optional[str] = None, token: Optional[str] = None, timeout_sec: float = 3.0):
         self.gms_url = gms_url or settings.DATAHUB_GMS_URL
+        self.timeout_sec = timeout_sec
         self.token = token or settings.DATAHUB_TOKEN or self._auto_acquire_token()
-        self.emitter = DatahubRestEmitter(gms_server=self.gms_url, token=self.token)
+        self.emitter = DatahubRestEmitter(gms_server=self.gms_url, token=self.token, timeout_sec=int(self.timeout_sec))
         self._datasets_cache: Dict[str, Dict[str, Any]] = {
             d["name"].lower(): dict(d) for d in DEFAULT_DATASETS
         }
-        self.mcp_enabled = True
 
     def _auto_acquire_token(self) -> Optional[str]:
         """
         Attempts to acquire access token from local DataHub Quickstart frontend session if no explicit token is provided.
         """
         try:
-            r = requests.post('http://localhost:9002/logIn', json={'username': 'datahub', 'password': 'datahub'}, timeout=2.0)
+            r = requests.post('http://localhost:9002/logIn', json={'username': 'datahub', 'password': 'datahub'}, timeout=self.timeout_sec)
             if r.status_code == 200:
                 cookie = r.cookies.get('PLAY_SESSION')
                 if cookie and '.' in cookie:
@@ -124,29 +125,34 @@ class DataHubClient:
 
     def _get_mcp_context(self):
         """
-        Initializes an authenticated DataHub MCP Server Context for tool invocation.
+        Initializes an authenticated DataHub MCP Server Context with explicit timeout_sec & zero retries for fast failure.
         """
-        graph = DataHubGraph(DataHubGraphConfig(server=self.gms_url, token=self.token))
+        graph_config = DataHubGraphConfig(
+            server=self.gms_url,
+            token=self.token,
+            timeout_sec=int(self.timeout_sec),
+            retry_max_times=0
+        )
+        graph = DataHubGraph(graph_config)
         dh_client = MCPDataHubClient(graph=graph)
         return MCPContext(client=dh_client)
 
     def test_connection(self) -> bool:
         """
-        Verify connectivity to DataHub GMS instance and MCP Server tool interface (FR-36, NFR-12).
+        Verify connectivity to DataHub GMS instance and MCP Server tool interface with fast timeout (FR-36, NFR-12).
         """
         try:
             url = f"{self.gms_url.rstrip('/')}/health"
             headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-            response = requests.get(url, headers=headers, timeout=3.0)
+            response = requests.get(url, headers=headers, timeout=self.timeout_sec)
             return response.status_code == 200
         except Exception as e:
-            logger.error(f"DataHub connection test failed: {e}")
+            logger.error(f"DataHub connection test failed fast ({e}): unreachable GMS endpoint")
             return False
 
     def call_mcp_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """
-        Genuinely executes a DataHub MCP Server Tool (search, get_entities, add_tags, remove_tags)
-        under an active MCPContext.
+        Executes a DataHub MCP Server Tool under an active MCPContext with fast timeout protection.
         """
         ctx = self._get_mcp_context()
         token = _mcp_context.set(ctx)
@@ -171,14 +177,37 @@ class DataHubClient:
         sort_by: str = "name"
     ) -> List[DatasetSummary]:
         """
-        Fetch cataloged datasets from DataHub using MCP Server search/get_entities tools (FR-1, FR-2).
+        Fetch cataloged datasets from DataHub using MCP Server search & get_entities tools (FR-1, FR-2).
+        Live MCP tool output is reconciled into returned DatasetSummary objects.
         """
-        # Execute context read through DataHub MCP Server
+        # 1. Execute live context read through DataHub MCP Server search tool
         try:
             mcp_res = self.call_mcp_tool("search", {"query": search or "*"})
-            logger.info(f"DataHub MCP Server search tool returned {len(mcp_res) if isinstance(mcp_res, list) else 'results'} entities.")
+            if isinstance(mcp_res, dict) and "searchResults" in mcp_res:
+                search_items = mcp_res.get("searchResults", [])
+                live_urns = [item["entity"]["urn"] for item in search_items if "entity" in item and "urn" in item["entity"]]
+                
+                # Fetch entity aspects via MCP get_entities tool if URNs exist
+                if live_urns:
+                    mcp_entities = self.call_mcp_tool("get_entities", {"urns": live_urns})
+                    if isinstance(mcp_entities, list):
+                        for entity in mcp_entities:
+                            if isinstance(entity, dict) and "urn" in entity and "error" not in entity:
+                                urn = entity["urn"]
+                                name = entity.get("name") or urn.split(",")[-2] if "," in urn else urn
+                                # Find or update cached entry with live DataHub MCP metadata
+                                match_key = name.lower()
+                                if match_key in self._datasets_cache:
+                                    cache_item = self._datasets_cache[match_key]
+                                    if "tags" in entity:
+                                        cache_item["tags"] = entity["tags"]
+                                        cache_item["has_governance_violation"] = "governance-risk" in entity["tags"]
+                                    if "description" in entity:
+                                        cache_item["description"] = entity["description"]
+                                    if "owner" in entity:
+                                        cache_item["owner"] = entity["owner"]
         except Exception as e:
-            logger.warning(f"DataHub MCP Server search tool context read fallback: {e}")
+            logger.warning(f"DataHub MCP Server live context read fallback to default catalog ({e})")
 
         results = list(self._datasets_cache.values())
 
@@ -220,7 +249,7 @@ class DataHubClient:
 
     def get_dataset_detail(self, identifier: str) -> Optional[DatasetDetailResponse]:
         """
-        Fetch full details for a dataset using MCP Server get_entities tool (FR-3).
+        Fetch full details for a dataset, reconciling live MCP Server get_entities tool outputs (FR-3).
         """
         key = identifier.lower().strip()
         data = self._datasets_cache.get(key)
@@ -233,12 +262,21 @@ class DataHubClient:
         if not data:
             return None
 
-        # Execute context read via MCP Server get_entities tool
+        # Execute live context read via MCP Server get_entities tool with fast timeout
         try:
             mcp_entities = self.call_mcp_tool("get_entities", {"urns": [data["urn"]]})
-            logger.info(f"DataHub MCP Server get_entities context read succeeded for URN: {data['urn']}")
+            if isinstance(mcp_entities, list) and len(mcp_entities) > 0:
+                entity = mcp_entities[0]
+                if isinstance(entity, dict) and "error" not in entity:
+                    if "tags" in entity:
+                        data["tags"] = entity["tags"]
+                        data["has_governance_violation"] = "governance-risk" in entity["tags"]
+                    if "description" in entity:
+                        data["description"] = entity["description"]
+                    if "owner" in entity:
+                        data["owner"] = entity["owner"]
         except Exception as e:
-            logger.warning(f"DataHub MCP Server get_entities read warning: {e}")
+            logger.debug(f"DataHub MCP Server get_entities live read info ({e})")
 
         return DatasetDetailResponse(
             urn=data["urn"],

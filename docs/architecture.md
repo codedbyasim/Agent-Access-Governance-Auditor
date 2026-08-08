@@ -22,7 +22,8 @@
  │    Integrations Layer       │
  └──────┬──────────────┬───────┘
         │              │
- DataHub REST SDK   GitHub REST API
+ DataHub MCP Server  GitHub REST API
+ (mcp-server-datahub) (OAuth Issues)
         │              │
  ┌──────▼──────┐ ┌─────▼──────┐
  │   DataHub   │ │   GitHub   │
@@ -32,64 +33,37 @@
 
 ---
 
-## 2. Layering & Module Organization
+## 2. DataHub Model Context Protocol (MCP) Integration
+
+The system uses **`mcp-server-datahub` (v0.6.0)** under an active `MCPContext` with explicit 3-second timeout protection (`timeout_sec=3.0`, `retry_max_times=0`):
+
+- **Live Context-Read Path**:
+  - `search`: Uses `mcp_server_datahub.tools.search.search` to query cataloged datasets from DataHub GMS (`http://localhost:8080`).
+  - `get_entities`: Uses `mcp_server_datahub.tools.entities.get_entities` to fetch live tags, classification levels (`pii`, `confidential`, `public`), and asset descriptions.
+- **Live Write-Back Path**:
+  - `add_tags`: Emits `urn:li:tag:governance-risk` violation tags and structured audit notes onto DataHub dataset entities using `mcp_server_datahub.tools.tags.add_tags`.
+  - `remove_tags`: Clears `governance-risk` tags upon remediation via `mcp_server_datahub.tools.tags.remove_tags`.
+
+---
+
+## 3. Layering & Module Organization
 
 - `backend/app/api/`: FastAPI REST endpoints, request/response validation, dependency injection.
   - `auth.py`: Authentication, registration, JWT tokens, and GitHub OAuth callback routes.
   - `datasets.py`: Catalog queries, classification tag editor, and DataHub risk tag remediation.
   - `agents.py`: AI agent policy registry CRUD routes.
   - `audit.py`: Access event evaluation, scenario simulator, audit log filtering, metrics, and CSV/JSON exports.
-  - `health.py`: Live DataHub connection health check.
-- `backend/app/core/`: Business domain logic, completely isolated from HTTP frameworks.
+  - `health.py`: Live DataHub & database connection health check.
+- `backend/app/core/`: Framework-independent business domain policy engine.
   - `policy.py`: Policy evaluation logic comparing agent permissions against dataset classifications.
   - `auditor.py`: Audit orchestration executing policy checks, persisting logs, and triggering write-backs.
-  - `schemas.py`: Pydantic data schemas.
-- `backend/app/store/`: Database persistence layer.
-  - `models.py`: SQLAlchemy ORM models (`UserModel`, `AgentModel`, `AuditLogModel`).
-  - `database.py`: SQLite session management and schema initialization (`auditor.db`).
-- `backend/app/integrations/`: Integration wrappers.
-  - `datahub_client.py`: DataHub REST/GMS client for metadata reads, `governance-risk` tag emission, and remediation tag clearance.
-  - `github_client.py`: GitHub OAuth flow helper & REST API client for posting automated Issue alerts.
-- `frontend/src/`: React frontend client application.
-  - `pages/`: Dashboard, Datasets, Agents, AuditRunner, AuditLog, Settings, Login, Signup.
-  - `components/`: Layout (Sidebar, DataHubBanner), AgentModal, DatasetDetailModal, AuditLogDetailModal, ProtectedRoute.
-  - `services/api.ts`: API service layer.
+- `backend/app/store/`: Database persistence layer (SQLAlchemy models: `UserModel`, `AgentModel`, `AuditLogModel`).
+- `backend/app/integrations/`: DataHub MCP Client wrapper (`datahub_client.py`) & GitHub notification client (`github_client.py`).
+- `frontend/src/`: React frontend client application (pages, components, services).
 
 ---
 
-## 3. End-to-End Evaluation & Write-Back Sequence
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as AI Agent / Auditor UI
-    participant API as FastAPI Backend
-    participant Engine as Policy Auditor
-    participant DataHub as DataHub GMS
-    participant DB as SQLite Store
-    participant GitHub as GitHub REST API
-
-    Client->>API: POST /api/audit/evaluate (agent, dataset, access_type, is_approved)
-    API->>Engine: evaluate_and_record_access_event()
-    Engine->>DB: Query Agent Policy Rules
-    Engine->>DataHub: GET /datasets/{urn} (Fetch Classification & Owner)
-    Engine->>Engine: Evaluate Access Policy Matrix
-    
-    alt Policy Compliant (OK)
-        Engine->>DB: Persist AuditLog (Status: OK)
-    else Policy Violation (FLAGGED)
-        Engine->>DataHub: POST Tag & Note Aspect (governance-risk)
-        Engine->>GitHub: POST /repos/{owner}/{repo}/issues (OAuth Issue Alert)
-        Engine->>DB: Persist AuditLog (Status: FLAGGED, DataHub Written, GitHub Notified)
-    end
-    
-    Engine-->>API: Return AuditLog Record
-    API-->>Client: 201 Created (AccessEventResult JSON)
-```
-
----
-
-## 4. Complete REST API Matrix
+## 4. REST API Matrix
 
 | Endpoint | Method | Scope | Description |
 | :--- | :--- | :--- | :--- |

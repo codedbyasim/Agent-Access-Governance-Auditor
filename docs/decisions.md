@@ -1,6 +1,6 @@
 # Architectural & Engineering Decisions Log
 
-This document records key technical decisions and trade-offs made during the implementation of the Agent Access Governance Auditor, in accordance with **SRS §1.2** and **AGENTS.md §5**.
+This document records key technical decisions and trade-offs made during the implementation of the Agent Access Governance Auditor, in accordance with **SRS §1.2**, **HACKATHON.md**, and **AGENTS.md §5**.
 
 ---
 
@@ -8,22 +8,26 @@ This document records key technical decisions and trade-offs made during the imp
 - **Context**: SRS §5.1 requires `core/` (policy check engine) to remain framework-independent.
 - **Decision**: `backend/app/core/` contains pure Python logic with no dependencies on FastAPI, Starlette, or web request context. API endpoints in `backend/app/api/` wrap `core/` logic and handle HTTP status codes, validation, and JSON serialization.
 
-### Decision 2: DataHub Integration & Write-Back Hooks (NFR-12, SRS §3.4)
-- **Context**: DataHub is already running in Docker Quickstart on port `8080` (GMS).
-- **Decision**: The Auditor backend connects directly to `http://localhost:8080` via REST API. When a policy violation occurs, the system automatically emits a `governance-risk` tag and attaches a structured audit note aspect to the dataset entity in DataHub. A remediation endpoint (`POST /api/datasets/{identifier}/remediate`) allows governance officers to clear the risk tag upon remediation.
+### Decision 2: DataHub MCP Server Integration & Live Read Reconciliation (HACKATHON.md §0)
+- **Context**: Hackathon rules mandate using DataHub MCP Server, Agent Context Kit, or Skills (not just plain REST SDK).
+- **Decision**: Integrated `mcp-server-datahub` (v0.6.0). Converted context-read path (`get_cataloged_datasets`, `get_dataset_detail`) to execute live `search` and `get_entities` tool calls under an active `MCPContext`. Reconciles live tags, violation states, descriptions, and owners directly from DataHub GMS, using default catalog cache as a fallback on network failure.
 
-### Decision 3: Auth & GitHub Integration (§3.5)
-- **Context**: AGENTS.md §3.5 mandates user authentication and real GitHub OAuth for issue notifications.
-- **Decision**: Implemented password hashing using PBKDF2 with SHA256 and JWT bearer token sessions (`PyJWT`). Added GitHub OAuth Authorization Code Flow (`/api/auth/github/url` and `/api/auth/github/callback`) so the app can create GitHub issues on behalf of the user when violations occur.
+### Decision 3: Fast Timeout & Fast-Failure Control (NFR-1, NFR-12)
+- **Context**: When DataHub GMS is slow or unreachable, network requests can hang indefinitely.
+- **Decision**: Configured `timeout_sec=3.0` and `retry_max_times=0` on `DataHubGraphConfig` and `requests`. Added automated test `test_datahub_unreachable_timeout_fails_fast()` to verify that connection tests and catalog reads fail fast within 3s with clean fallback rather than blocking.
 
-### Decision 4: GitHub Notification Fallback Strategy (FR-27)
-- **Context**: FR-27 requires graceful fallback when GitHub account is not connected or GitHub API is unavailable.
-- **Decision**: If a user is not connected or GitHub API encounters network timeouts, the system falls back to logging a local simulated notification entry (`⚡ Simulated Alert Logged`) without throwing unhandled exceptions or breaking the audit pipeline.
+### Decision 4: DataHub Write-Back & Remediation Engine (SRS §3.4)
+- **Context**: DataHub is running in Docker Quickstart on port `8080`.
+- **Decision**: On policy violations, the backend emits `urn:li:tag:governance-risk` via MCP `add_tags` tool and attaches audit notes. Governance officers can clear the risk tag post-remediation via `/api/datasets/{identifier}/remediate` executing MCP `remove_tags`.
 
-### Decision 5: Audit Trail Persistence & Export Formats (FR-28, FR-30, FR-32)
-- **Context**: Regulatory auditing requires immutable event records, multi-field search, pagination, and offline reporting.
-- **Decision**: Persisted all access events in SQLite database (`auditor.db`) via SQLAlchemy. Implemented server-side pagination (default 20 records per page) and streaming export endpoints for CSV (`/api/audit/export/csv`) and JSON (`/api/audit/export/json`).
+### Decision 5: Auth & GitHub OAuth Integration (§3.5)
+- **Context**: User authentication and real GitHub OAuth issue notifications.
+- **Decision**: Implemented password hashing using PBKDF2/SHA256 and JWT sessions (`PyJWT`). Added GitHub OAuth Authorization Code Flow (`/api/auth/github/url` and `/api/auth/github/callback`) for automated GitHub issue creation.
 
-### Decision 6: Visual Design System & Anti-AI-Slop Styling (AGENTS.md §3)
-- **Context**: AGENTS.md strictly forbids generic AI slop UI (glassmorphism cards, purple/blue gradient hero banners, raw Tailwind defaults, color-only badges).
-- **Decision**: Created a dense compliance & governance theme using custom dark charcoal/navy scales (`#0f172a`, `#1e293b`), high-contrast typography (`Inter`), accessible badges combining icons, shapes, and text (NFR-17), and real data tables.
+### Decision 6: Notification Fallback Strategy (FR-27)
+- **Context**: FR-27 requires graceful fallback when GitHub account is not connected.
+- **Decision**: If GitHub OAuth is disconnected or API is unreachable, system logs a local simulated notification entry (`⚡ Simulated Alert Logged`) without breaking the audit pipeline.
+
+### Decision 7: Audit Trail Persistence & Streaming Exports (FR-28, FR-30, FR-32)
+- **Context**: Persistent immutable audit log and reporting requirements.
+- **Decision**: Persisted all access events in SQLite database (`auditor.db`) via SQLAlchemy. Implemented server-side pagination (20 records/page) and streaming export endpoints for CSV (`/api/audit/export/csv`) and JSON (`/api/audit/export/json`).

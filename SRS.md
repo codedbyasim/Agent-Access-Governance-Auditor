@@ -4,7 +4,7 @@
 **Version:** 1.0
 **Date:** August 2026
 **Hackathon:** Build with DataHub — The Agent Hackathon
-**Track:** Open / Wildcard (Regulatory Automation)
+**Track:** Agents That Do Real Work
 **Document Owner:** _[Your name / team name here]_
 
 ---
