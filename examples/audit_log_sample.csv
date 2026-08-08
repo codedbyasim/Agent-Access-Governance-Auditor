@@ -1,0 +1,5 @@
+event_id,timestamp,agent_name,dataset_name,dataset_classification,access_type,is_approved,status,violation_reason,datahub_written,github_notified
+evt_0622aad251,2026-08-08 10:55:02 UTC,CustomerSupportBot,analytics.customer_pii,PII,READ,False,FLAGGED,"Agent 'CustomerSupportBot' lacks approval for sensitivity level 'PII'",True,True
+evt_a5899821d9,2026-08-08 10:54:06 UTC,UnknownScraperBot,healthcare.patient_records,PII,READ,False,FLAGGED,"Access by unregistered identity 'UnknownScraperBot'",True,True
+evt_5a0e298497,2026-08-08 10:54:06 UTC,FinancialAnalystAgent,finance.payroll_transactions,CONFIDENTIAL,EXPORT,False,FLAGGED,"Agent 'FinancialAnalystAgent' lacks permission for sensitivity level 'CONFIDENTIAL'",True,True
+evt_10a991c2b5,2026-08-08 10:52:11 UTC,DataGovernanceCheckerAgent,sales.quarterly_revenue_public,PUBLIC,READ,True,OK,"",False,False

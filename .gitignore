@@ -16,6 +16,7 @@ frontend/dist/
 frontend/build/
 .npm
 *.log
+*.zip
 
 # Environment & Database
 .env

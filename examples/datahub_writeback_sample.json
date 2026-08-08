@@ -1,0 +1,19 @@
+{
+  "mcp_server": "mcp-server-datahub v0.6.0",
+  "writeback_operation": "add_tags",
+  "target_entity_urn": "urn:li:dataset:(urn:li:dataPlatform:snowflake,analytics.customer_pii,PROD)",
+  "applied_tag_urns": [
+    "urn:li:tag:governance-risk"
+  ],
+  "audit_note_aspect": {
+    "timestamp": "2026-08-08 10:55:02 UTC",
+    "agent_name": "CustomerSupportBot",
+    "violation_reason": "Agent 'CustomerSupportBot' lacks approval for sensitivity level 'PII'",
+    "resolution_status": "FLAGGED",
+    "remediation_action": "POST /api/datasets/analytics.customer_pii/remediate"
+  },
+  "mcp_tool_response": {
+    "success": true,
+    "message": "Successfully applied tag urn:li:tag:governance-risk to dataset urn:li:dataset:(urn:li:dataPlatform:snowflake,analytics.customer_pii,PROD) via DataHub MCP Server."
+  }
+}

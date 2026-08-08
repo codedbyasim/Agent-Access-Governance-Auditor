@@ -1,0 +1,54 @@
+[
+  {
+    "id": "evt_0622aad251",
+    "timestamp": "2026-08-08T10:55:02Z",
+    "agent_name": "CustomerSupportBot",
+    "dataset_name": "analytics.customer_pii",
+    "dataset_classification": "PII",
+    "access_type": "READ",
+    "is_approved": false,
+    "status": "FLAGGED",
+    "violation_reason": "Agent 'CustomerSupportBot' lacks approval for sensitivity level 'PII'",
+    "datahub_written": true,
+    "github_notified": true
+  },
+  {
+    "id": "evt_a5899821d9",
+    "timestamp": "2026-08-08T10:54:06Z",
+    "agent_name": "UnknownScraperBot",
+    "dataset_name": "healthcare.patient_records",
+    "dataset_classification": "PII",
+    "access_type": "READ",
+    "is_approved": false,
+    "status": "FLAGGED",
+    "violation_reason": "Access by unregistered identity 'UnknownScraperBot'",
+    "datahub_written": true,
+    "github_notified": true
+  },
+  {
+    "id": "evt_5a0e298497",
+    "timestamp": "2026-08-08T10:54:06Z",
+    "agent_name": "FinancialAnalystAgent",
+    "dataset_name": "finance.payroll_transactions",
+    "dataset_classification": "CONFIDENTIAL",
+    "access_type": "EXPORT",
+    "is_approved": false,
+    "status": "FLAGGED",
+    "violation_reason": "Agent 'FinancialAnalystAgent' lacks permission for sensitivity level 'CONFIDENTIAL'",
+    "datahub_written": true,
+    "github_notified": true
+  },
+  {
+    "id": "evt_10a991c2b5",
+    "timestamp": "2026-08-08T10:52:11Z",
+    "agent_name": "DataGovernanceCheckerAgent",
+    "dataset_name": "sales.quarterly_revenue_public",
+    "dataset_classification": "PUBLIC",
+    "access_type": "READ",
+    "is_approved": true,
+    "status": "OK",
+    "violation_reason": null,
+    "datahub_written": false,
+    "github_notified": false
+  }
+]
